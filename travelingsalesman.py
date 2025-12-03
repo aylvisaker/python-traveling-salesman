@@ -1,6 +1,7 @@
-import time, random, Tkinter, sys
-
-# <editor-fold desc = "Tools">
+import time, random, tkinter, sys
+import networkx as nx
+import matplotlib.pyplot as plt
+import pygame
 
 def euclidean_distance(a, b):
     """
@@ -11,13 +12,12 @@ def euclidean_distance(a, b):
     """
     return sum((x - y) ** 2 for x, y in zip(a, b)) ** 0.5
 
-
-def generate_map(n, d = 2):
+def generate_map(n: int, d: int = 2) -> tuple[list, dict]:
     """
     Generates a list of cities and a dictionary providing their Euclidean distances.
     :param n: number of cities
     :param d: dimension of map (most commonly 2)
-    :return: list of cities represented by ordered tuples, dictionary providing distances between cities
+    :return: dictionary providing distances between cities
     """
     cities = [tuple(random.random() for coordinate in range(d)) for city in range(n)]
     distance = dict()
@@ -28,6 +28,107 @@ def generate_map(n, d = 2):
             distance[b, a] = dist
     return cities, distance
 
+def draw_map_networkx(tour):
+    """
+    Draws a 2D TSP tour using NetworkX.
+    """
+
+    G = nx.Graph()
+    # Assign each city an index so NetworkX can use integers for nodes
+    G.add_nodes_from(range(len(tour)))
+    # while still plotting at the (x,y) coords.
+    positions = {i: city for i, city in enumerate(tour)}
+
+    # Add edges in tour order + closing the loop
+    edges = [(i, i+1) for i in range(len(tour)-1)]
+    edges.append((len(tour)-1, 0))  # close cycle
+    G.add_edges_from(edges)
+
+    # Draw it
+    plt.figure(figsize=(7, 7))
+    nx.draw(
+        G,
+        pos=positions,
+        with_labels=True,
+        node_size=80,
+        node_color="black",
+        edge_color="blue",
+        width=1.2
+    )
+    plt.title("TSP Tour (NetworkX)")
+    plt.gca().set_aspect("equal", adjustable="box")
+    plt.show()
+
+def draw_complete_graph(cities, tour=None):
+    G = nx.Graph()
+    positions = {i: (c[0], c[1]) for i, c in enumerate(cities)}
+
+    G.add_nodes_from(range(len(cities)))
+    for i in range(len(cities)):
+        for j in range(i+1, len(cities)):
+            G.add_edge(i, j)
+
+    plt.figure(figsize=(7,7))
+    nx.draw(G, pos=positions, node_size=60, alpha=0.6)
+
+    # overlay tour if supplied
+    if tour:
+        order = [cities.index(c) for c in tour] + [cities.index(tour[0])]
+        nx.draw_networkx_edges(
+            G, pos=positions,
+            edgelist=[(order[i], order[i+1]) for i in range(len(order)-1)],
+            edge_color="red", width=2
+        )
+
+    plt.show()
+
+def draw_map_pygame(tour, size=600, speed=30):
+    """
+    Draws a TSP tour with pygame, animating the line being traced.
+    """
+    pygame.init()
+    screen = pygame.display.set_mode((size, size))
+    pygame.display.set_caption("TSP Tour (pygame)")
+
+    # Scale your (0,1) coordinates to screen pixels
+    def to_pix(p):
+        return (int(p[0] * size), int(p[1] * size))
+
+    # Precompute pixel positions
+    points = [to_pix(p) for p in tour] + [to_pix(tour[0])]
+
+    clock = pygame.time.Clock()
+
+    # Draw nodes
+    node_color = (255, 255, 255)
+    edge_color = (0, 200, 255)
+    bg_color = (0, 0, 0)
+
+    screen.fill(bg_color)
+    for x, y in points:
+        pygame.draw.circle(screen, node_color, (x, y), 4)
+    pygame.display.flip()
+
+    # Animate drawing the route
+    for i in range(len(points) - 1):
+        pygame.draw.line(screen, edge_color, points[i], points[i+1], 2)
+        pygame.display.flip()
+        clock.tick(speed)
+
+        # Handle quit events
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+    # Keep the window open until the user closes it
+    running = True
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+
+    pygame.quit()
 
 def draw_map(tour, pixels = 500):
     """
@@ -36,8 +137,8 @@ def draw_map(tour, pixels = 500):
     :param pixels: width and height of the image
     :return: NONE
     """
-    master = Tkinter.Tk()
-    canvas = Tkinter.Canvas(master, width = pixels, height = pixels)
+    master = tkinter.Tk()
+    canvas = tkinter.Canvas(master, width = pixels, height = pixels)
     canvas.pack()
     for i in range(len(tour) - 1):
         a = pixels * tour[i][0]
@@ -50,8 +151,7 @@ def draw_map(tour, pixels = 500):
     c = pixels * tour[-1][0]
     d = pixels * tour[-1][1]
     canvas.create_line(a, b, c, d)
-    Tkinter.mainloop()
-
+    tkinter.mainloop()
 
 def path_length(tour, distance):
     """
@@ -74,7 +174,6 @@ def swap(path, x, y):
     new_path[y] = path[x]
     return new_path
 
-
 def reverse(path, x, y):
     """
     Reverses the portion of path between indices x and y.
@@ -82,10 +181,6 @@ def reverse(path, x, y):
     newpath = path[:]
     newpath[x:y] = path[x:y][::-1]
     return newpath
-
-# </editor-fold>
-
-# <editor-fold desc = "Algorithms">
 
 def greedy_heuristic(cities, distance):
     """
@@ -119,8 +214,8 @@ def random_search(cities, distance, timelimit = 1):
     """
     bestpath = cities
     bestdistance = 1.5 * len(cities)
-    t = time.clock()
-    while time.clock() - t < timelimit:
+    t = time.perf_counter()
+    while time.perf_counter() - t < timelimit:
         newpath = cities[:]
         random.shuffle(newpath)
         newdist = path_length(newpath, distance)
@@ -170,7 +265,6 @@ def backtracking_with_pruning(cities, distance, part_path = [], part_len = 0, mi
                         min_path, min_len = tour, tour_len
         return min_path, min_len
 
-
 # TODO: weird behavior note - applying greedy_heuristic before local_search makes latter do nothing (IF n > 30).
 def local_search(cities, distance):
     stuck = False
@@ -189,10 +283,6 @@ def local_search(cities, distance):
                         min_path, min_len = new_path, new_length
                         stuck = False
     return min_path, min_len
-
-
-def simulated_annealing(cities, distance, method, iteration_length, temp_coefficient, decrement):
-    return "NOT DONE YET"
 
 
 def backtracking(cities, distance, part_path = [], part_len = 0, min_path = [], min_len = 0):
@@ -219,39 +309,22 @@ def backtracking(cities, distance, part_path = [], part_len = 0, min_path = [], 
                 min_path, min_len = tour, tour_len
         return min_path, min_len
 
-# TODO: Make something of this.
-def matrix_stuff(cities, distance):
-    n = len(cities)
-    array = [[0 for y in range(n)] for x in range(n)]
-    for x in range(n):
-        for y in range(n):
-            array[x][y] = euclidean_distance(cities[x], cities[y])
-    for row in array:
-        print(map(lambda x: round(x, 2), row))
-    return [], 0
-
-# </editor-fold>
-
-# <editor-fold desc = "Main">
-
 def main(n, seed = 'hello'):
     random.seed(seed)
     cities, distance = generate_map(n, 2)
-    algorithms = [greedy_heuristic, random_search, local_search, matrix_stuff, backtracking_with_pruning,
-                  backtracking, simulated_annealing][4:6]
+    algorithms = [greedy_heuristic, random_search, local_search, backtracking_with_pruning, backtracking]
     print('Working on n = ' + str(n) + ' cities:')
     for algorithm in algorithms:
-        t = time.clock()
+        t = time.perf_counter()
         tour, length = algorithm(cities, distance)
-        t = time.clock() - t
+        t = time.perf_counter() - t
         message = 'Algorithm ' + algorithm.__name__ + ' found a path of length '
         message += str(length) + ' in ' + str(t) + ' seconds.'
         print(message)
+        draw_map_pygame(tour)
 
 if __name__ == '__main__':
     if len(sys.argv) == 2:
         main(sys.argv[1])
     else:
         main(15)
-
-# </editor-fold>
